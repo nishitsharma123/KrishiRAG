@@ -23,7 +23,7 @@ apiClient.interceptors.response.use(
 export const chatApi = {
   ask: async (data) => {
     return apiClient.post('/chat', data, {
-      timeout: 240000, // 4 minutes for local CPU Ollama inference
+      timeout: 120000, // 2 minutes max (backend timeout fallback returns in <75s)
     });
   },
 

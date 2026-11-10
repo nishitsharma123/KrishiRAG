@@ -288,10 +288,10 @@ class RAGService:
             generated_answer = await llm_service.generate_chat(
                 messages=messages,
                 temperature=0.2,
-                max_tokens=512,
+                max_tokens=256,
             )
         except Exception as e:
-            logger.error("LLM Generation failed: %s", e)
+            logger.warning("LLM Generation timed out or failed (%s). Providing structured advisory fallback.", e)
             top_doc = retrieved_chunks[0]
             # Provide conversational, structured fallback based strictly on verified ICAR passages
             generated_answer = (
