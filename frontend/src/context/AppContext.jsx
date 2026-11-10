@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 
 const AppContext = createContext(null);
@@ -8,7 +8,10 @@ export const AppProvider = ({ children }) => {
   const [loadingHealth, setLoadingHealth] = useState(true);
   const [healthError, setHealthError] = useState(null);
 
-  const refreshHealth = async () => {
+  const [llmStatus, setLlmStatus] = useState(null);
+  const [loadingLLM, setLoadingLLM] = useState(true);
+
+  const refreshHealth = useCallback(async () => {
     setLoadingHealth(true);
     setHealthError(null);
     try {
@@ -19,14 +22,35 @@ export const AppProvider = ({ children }) => {
     } finally {
       setLoadingHealth(false);
     }
-  };
+  }, []);
+
+  const refreshLLMStatus = useCallback(async () => {
+    setLoadingLLM(true);
+    try {
+      const data = await apiService.getLLMStatus();
+      setLlmStatus(data);
+    } catch (err) {
+      setLlmStatus({
+        ollama_available: false,
+        model_installed: false,
+        system_ready: false,
+        error: err.message,
+      });
+    } finally {
+      setLoadingLLM(false);
+    }
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    refreshHealth();
+    refreshLLMStatus();
+  }, [refreshHealth, refreshLLMStatus]);
 
   useEffect(() => {
-    refreshHealth();
-    // Periodically poll health every 30 seconds
-    const interval = setInterval(refreshHealth, 30000);
+    refreshAll();
+    const interval = setInterval(refreshAll, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshAll]);
 
   return (
     <AppContext.Provider
@@ -35,6 +59,10 @@ export const AppProvider = ({ children }) => {
         loadingHealth,
         healthError,
         refreshHealth,
+        llmStatus,
+        loadingLLM,
+        refreshLLMStatus,
+        refreshAll,
       }}
     >
       {children}

@@ -9,12 +9,13 @@ import {
   Search, 
   Database,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Bot
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 export const LandingPage = () => {
-  const { health, loadingHealth, healthError } = useApp();
+  const { health, loadingHealth, healthError, llmStatus, loadingLLM } = useApp();
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -63,7 +64,7 @@ export const LandingPage = () => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
             <Database className="w-4 h-4 text-emerald-600" />
-            Backend & Host System Diagnostics
+            Backend & Model Pipeline Diagnostics
           </h2>
           <span className="text-xs text-slate-500">Live API Polling</span>
         </div>
@@ -89,7 +90,41 @@ export const LandingPage = () => {
             </div>
           </div>
 
-          {/* Card 2: Database Connectivity */}
+          {/* Card 2: Qwen3 LLM */}
+          <div className="p-5 rounded-xl bg-white border border-slate-200/80 shadow-xs space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Qwen3:4b (Ollama)</span>
+              {loadingLLM ? (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              ) : llmStatus?.system_ready ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-500" />
+              )}
+            </div>
+            <div className="text-xl font-bold text-slate-900">
+              {loadingLLM ? 'Checking...' : llmStatus?.system_ready ? 'ONLINE' : 'DEGRADED'}
+            </div>
+            <div className="text-xs text-slate-500">
+              Runtime: <span className="font-mono text-slate-700 font-medium">{llmStatus?.model_name || 'qwen3:4b'} (CPU)</span>
+            </div>
+          </div>
+
+          {/* Card 3: Vector Storage */}
+          <div className="p-5 rounded-xl bg-white border border-slate-200/80 shadow-xs space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+              <span>Vector Database</span>
+              <Search className="w-4 h-4 text-slate-400" />
+            </div>
+            <div className="text-xl font-bold text-slate-900">
+              Qdrant Local
+            </div>
+            <div className="text-xs text-slate-500 truncate" title={health?.vector_db_path}>
+              Collection: <span className="font-mono text-slate-700 font-medium">icar_knowledge</span>
+            </div>
+          </div>
+
+          {/* Card 4: Database Connectivity */}
           <div className="p-5 rounded-xl bg-white border border-slate-200/80 shadow-xs space-y-2">
             <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
               <span>Metadata Database</span>
@@ -100,36 +135,6 @@ export const LandingPage = () => {
             </div>
             <div className="text-xs text-slate-500">
               Engine: <span className="font-mono text-slate-700 font-medium">SQLite (WAL Mode)</span>
-            </div>
-          </div>
-
-          {/* Card 3: Memory Budget */}
-          <div className="p-5 rounded-xl bg-white border border-slate-200/80 shadow-xs space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-              <span>RAM Headroom</span>
-              <Cpu className="w-4 h-4 text-slate-400" />
-            </div>
-            <div className="text-xl font-bold text-slate-900">
-              {health?.system_metrics?.ram_available_gb 
-                ? `${health.system_metrics.ram_available_gb} GB Free` 
-                : 'Allocated'}
-            </div>
-            <div className="text-xs text-slate-500">
-              Total Visible: <span className="font-mono text-slate-700 font-medium">{health?.system_metrics?.ram_total_gb || '7.33'} GB</span>
-            </div>
-          </div>
-
-          {/* Card 4: Vector Storage */}
-          <div className="p-5 rounded-xl bg-white border border-slate-200/80 shadow-xs space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
-              <span>Vector Database</span>
-              <Search className="w-4 h-4 text-slate-400" />
-            </div>
-            <div className="text-xl font-bold text-slate-900">
-              Qdrant Local
-            </div>
-            <div className="text-xs text-slate-500 truncate" title={health?.vector_db_path}>
-              Path: <span className="font-mono text-slate-700 font-medium">{health?.vector_db_path || './data/qdrant_db'}</span>
             </div>
           </div>
         </div>

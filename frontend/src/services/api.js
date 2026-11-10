@@ -41,6 +41,7 @@ export const apiService = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 120000,
     });
   },
 
@@ -53,11 +54,16 @@ export const apiService = {
   },
 
   triggerIndexing: async (params = {}) => {
-    return apiClient.post('/retrieval/index', null, { params });
+    return apiClient.post('/retrieval/index', null, { 
+      params,
+      timeout: 600000, // 10 minutes for full reindexing
+    });
   },
 
   askChat: async (data) => {
-    return apiClient.post('/chat', data);
+    return apiClient.post('/chat', data, {
+      timeout: 240000, // 4 minutes to allow local CPU LLM inference
+    });
   },
 
   getChatHistory: async (sessionId) => {
