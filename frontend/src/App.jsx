@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { LandingPage } from './pages/LandingPage';
 import { ChatPage } from './pages/ChatPage';
 import { DocumentsPage } from './pages/DocumentsPage';
+import { AdminPage } from './pages/AdminPage';
 import { EvaluationPage } from './pages/EvaluationPage';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
             <Route index element={<LandingPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="documents" element={<DocumentsPage />} />
+            <Route path="admin" element={<AdminPage />} />
             <Route path="evaluation" element={<EvaluationPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

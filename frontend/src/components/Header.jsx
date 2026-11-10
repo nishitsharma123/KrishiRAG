@@ -30,15 +30,15 @@ export const Header = ({ setMobileOpen }) => {
         <div className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg border bg-slate-50 border-slate-200">
           {loadingLLM ? (
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          ) : llmStatus?.system_ready ? (
+          ) : (llmStatus?.system_ready || (llmStatus?.available && llmStatus?.model_installed)) ? (
             <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" />
           ) : (
             <span className="w-2 h-2 rounded-full bg-rose-500" />
           )}
           <span className="font-medium text-slate-700">
-            {llmStatus?.system_ready
+            {(llmStatus?.system_ready || (llmStatus?.available && llmStatus?.model_installed))
               ? 'Qwen3:4b Active'
-              : llmStatus?.ollama_available
+              : (llmStatus?.ollama_available || llmStatus?.available)
               ? 'Model Loading...'
               : 'Ollama Offline'}
           </span>

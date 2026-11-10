@@ -12,12 +12,7 @@ from backend.app.utils.chunk_inspector import ChunkInspector
 @pytest.fixture(scope="module")
 def setup_database():
     init_db()
-    db = SessionLocal()
-    try:
-        db.query(Document).delete()
-        db.commit()
-    finally:
-        db.close()
+    # Safe fixture: Do not delete existing user documents from krishirag.db
     yield
 
 def test_agronomic_text_cleaner():

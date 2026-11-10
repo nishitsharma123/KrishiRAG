@@ -1,14 +1,19 @@
+import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, status, HTTPException
 from sqlalchemy.orm import Session
+
 from backend.app.api.health import router as health_router
 from backend.app.api.retrieval import router as retrieval_router
 from backend.app.api.chat import router as chat_router
+from backend.app.api.admin import router as admin_router
+from backend.app.api.evaluation import router as evaluation_router
 from backend.app.database.session import get_db
 from backend.app.models.document import Document
 from backend.app.schemas.document import DocumentResponse, DocumentIngestionResult
 from backend.app.services.ingestion import DocumentIngestionService
 from backend.app.utils.chunk_inspector import ChunkInspector
+from backend.app.core.config import settings
 
 api_router = APIRouter()
 
@@ -57,6 +62,32 @@ def get_document(document_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Document not found")
     return DocumentResponse.model_validate(doc.to_dict())
 
+@docs_router.delete("/{document_id}")
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    """Delete a document record, its processed chunks file, and physical storage."""
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Clean up processed JSON if exists
+    proc_path = os.path.join(settings.PROCESSED_DATA_PATH, f"{document_id}.json")
+    if os.path.exists(proc_path):
+        try:
+            os.remove(proc_path)
+        except Exception:
+            pass
+
+    # Clean up physical storage file if exists
+    if doc.file_path and os.path.exists(doc.file_path):
+        try:
+            os.remove(doc.file_path)
+        except Exception:
+            pass
+
+    db.delete(doc)
+    db.commit()
+    return {"success": True, "message": f"Document '{doc.title}' deleted successfully."}
+
 @docs_router.get("/{document_id}/chunks")
 def inspect_document_chunks(
     document_id: str,
@@ -72,3 +103,5 @@ def inspect_document_chunks(
 api_router.include_router(docs_router)
 api_router.include_router(retrieval_router)
 api_router.include_router(chat_router)
+api_router.include_router(admin_router)
+api_router.include_router(evaluation_router)

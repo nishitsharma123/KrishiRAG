@@ -8,7 +8,8 @@ import {
   Layers, 
   ShieldCheck,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Server
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -19,6 +20,7 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     { name: 'Overview', to: '/', icon: Layers },
     { name: 'Advisory Chat', to: '/chat', icon: MessageSquare },
     { name: 'ICAR Documents', to: '/documents', icon: FileText },
+    { name: 'Admin Dashboard', to: '/admin', icon: Server },
     { name: 'RAG Evaluation', to: '/evaluation', icon: BarChart3 },
   ];
 

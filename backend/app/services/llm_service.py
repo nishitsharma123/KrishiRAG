@@ -78,19 +78,30 @@ class LLMService:
                 model_found = any(target_model in m or m in target_model for m in models)
                 return {
                     "available": True,
+                    "ollama_available": True,
+                    "system_ready": model_found,
                     "target_model": target_model,
+                    "model_name": target_model,
                     "model_installed": model_found,
                     "installed_models": models,
                 }
         except httpx.ConnectError:
             return {
                 "available": False,
+                "ollama_available": False,
+                "system_ready": False,
+                "model_installed": False,
+                "model_name": settings.OLLAMA_MODEL,
                 "error": f"Cannot connect to Ollama at {settings.OLLAMA_BASE_URL}. Is 'ollama serve' running?",
                 "models": [],
             }
         except Exception as e:
             return {
                 "available": False,
+                "ollama_available": False,
+                "system_ready": False,
+                "model_installed": False,
+                "model_name": settings.OLLAMA_MODEL,
                 "error": str(e),
                 "models": [],
             }

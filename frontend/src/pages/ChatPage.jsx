@@ -6,18 +6,25 @@ import {
   Sparkles, 
   ShieldCheck, 
   FileText, 
-  AlertTriangle,
-  RefreshCw,
-  PlusCircle,
-  Clock,
-  CheckCircle2,
-  Filter,
-  Layers,
-  ChevronRight,
-  ExternalLink,
-  ShieldAlert
+  AlertTriangle, 
+  RefreshCw, 
+  PlusCircle, 
+  Clock, 
+  CheckCircle2, 
+  Filter, 
+  Layers, 
+  ChevronRight, 
+  ExternalLink, 
+  ShieldAlert,
+  ThumbsUp,
+  ThumbsDown,
+  History,
+  Trash2,
+  X,
+  MessageSquare,
+  Sprout
 } from 'lucide-react';
-import { apiService } from '../services/api';
+import { chatApi, feedbackApi } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { FormattedAnswer } from '../components/FormattedAnswer';
 import { CitationSidecar } from '../components/CitationSidecar';
@@ -32,38 +39,18 @@ const CROP_OPTIONS = [
   { label: 'Gram / Chickpea (चना)', value: 'chickpea' },
 ];
 
-const SUGGESTED_QUERIES = [
-  {
-    query: 'What is the recommended seed rate for timely sown wheat in NWPZ?',
-    crop: 'wheat',
-    category: 'Agronomy / Seed Rate'
-  },
-  {
-    query: 'How to identify and manage Yellow Rust in Wheat according to ICAR?',
-    crop: 'wheat',
-    category: 'Disease Management'
-  },
-  {
-    query: 'What are the critical irrigation stages for wheat crop?',
-    crop: 'wheat',
-    category: 'Water Management'
-  },
-  {
-    query: 'What is the recommended NPK fertilizer schedule for irrigated wheat?',
-    crop: 'wheat',
-    category: 'Nutrient Management'
-  },
-  {
-    query: 'How to cultivate dragon fruit in Antarctica sub-zero soil?',
-    crop: '',
-    category: 'Abstention Test (Out of Scope)'
-  }
+const SPECIFIED_SUGGESTED_QUESTIONS = [
+  'How can farmers improve wheat production?',
+  'What are common diseases affecting rice crops?',
+  'Explain integrated pest management.',
+  'What are the benefits of organic manure?',
+  'What are recommended irrigation practices?'
 ];
 
 export const ChatPage = () => {
   const { llmStatus, loadingLLM } = useApp();
 
-  // Multi-turn session persistence
+  // Active Session ID
   const [sessionId, setSessionId] = useState(() => {
     const existing = localStorage.getItem('krishirag_session_id');
     if (existing) return existing;
@@ -76,7 +63,7 @@ export const ChatPage = () => {
     {
       id: 'welcome-init',
       role: 'assistant',
-      content: `Namaste! I am **KrishiRAG**, your verified agricultural advisory system.\n\nI answer queries strictly grounded in official publications from the **Indian Council of Agricultural Research (ICAR)** and State Agricultural Universities. Every agronomic recommendation, seed rate, and fertilizer dosage is cross-checked against indexed documents with verifiable page citations.\n\nSelect a verified crop topic below or type your farming query to begin.`,
+      content: `Namaste! I am **KrishiRAG**, your verified agricultural advisory assistant.\n\nI answer farming questions strictly using official publications from the **Indian Council of Agricultural Research (ICAR)** and State Agricultural Universities. Every agronomic recommendation, seed dosage, and pest control measure is tethered to verifiable page citations.\n\nSelect a suggested topic below or enter your query to begin.`,
       sources: [],
       retrieved_chunks: [],
       abstained: false,
@@ -90,6 +77,14 @@ export const ChatPage = () => {
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState('');
   const [errorMessage, setErrorMessage] = useState(null);
+
+  // History Drawer State
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [sessionsList, setSessionsList] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  // Feedback State: { [messageId]: 1 or -1 }
+  const [feedbackState, setFeedbackState] = useState({});
 
   // Citation Sidecar State
   const [sidecarOpen, setSidecarOpen] = useState(false);
@@ -106,31 +101,79 @@ export const ChatPage = () => {
     scrollToBottom();
   }, [messages, loading]);
 
-  // Load conversation history on mount
-  useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const historyData = await apiService.getChatHistory(sessionId);
-        if (historyData?.messages && historyData.messages.length > 0) {
-          const loaded = historyData.messages.map((m, idx) => ({
-            id: `hist_${m.id || idx}`,
-            role: m.role,
-            content: m.content,
+  // Load conversation messages whenever active sessionId changes
+  const loadSessionMessages = async (targetSessionId) => {
+    try {
+      const historyData = await chatApi.getHistory(targetSessionId);
+      if (historyData?.messages && historyData.messages.length > 0) {
+        const loaded = historyData.messages.map((m, idx) => ({
+          id: m.id || `msg_${idx}`,
+          role: m.role,
+          content: m.content,
+          sources: [],
+          retrieved_chunks: [],
+          abstained: m.content.toLowerCase().includes('insufficient') && m.role === 'assistant',
+          created_at: m.created_at,
+        }));
+        setMessages(loaded);
+      } else {
+        setMessages([
+          {
+            id: 'welcome-empty',
+            role: 'assistant',
+            content: `**Advisory Session Active**\n\nAsk any question regarding crop varieties, sowing windows, fertilizer schedules, or pest management grounded in ICAR manuals.`,
             sources: [],
             retrieved_chunks: [],
-            abstained: m.content.toLowerCase().includes('insufficient') && m.role === 'assistant',
-            created_at: m.created_at,
-          }));
-          setMessages(loaded);
-        }
-      } catch (err) {
-        // Non-blocking: keep local state
-        console.warn('Could not restore chat history for session:', sessionId, err);
+            abstained: false,
+          }
+        ]);
       }
-    };
+    } catch (err) {
+      console.warn('Could not load session history:', err);
+    }
+  };
 
-    fetchHistory();
+  useEffect(() => {
+    loadSessionMessages(sessionId);
   }, [sessionId]);
+
+  // Fetch all previous sessions
+  const fetchSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const sessions = await chatApi.getSessions();
+      setSessionsList(sessions || []);
+    } catch (err) {
+      console.warn('Failed to fetch previous sessions:', err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  const handleOpenHistoryDrawer = () => {
+    fetchSessions();
+    setHistoryDrawerOpen(true);
+  };
+
+  const handleSelectSession = (targetSessionId) => {
+    localStorage.setItem('krishirag_session_id', targetSessionId);
+    setSessionId(targetSessionId);
+    setHistoryDrawerOpen(false);
+  };
+
+  const handleDeleteSession = async (e, targetSessionId) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this conversation history?')) return;
+    try {
+      await chatApi.deleteSession(targetSessionId);
+      setSessionsList((prev) => prev.filter((s) => s.session_id !== targetSessionId));
+      if (sessionId === targetSessionId) {
+        startNewSession();
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to delete session');
+    }
+  };
 
   const startNewSession = () => {
     const freshId = 'session_' + Math.random().toString(36).substring(2, 10);
@@ -147,6 +190,20 @@ export const ChatPage = () => {
       }
     ]);
     setErrorMessage(null);
+  };
+
+  const handleClearCurrentChat = () => {
+    if (!window.confirm('Clear all messages in the current view?')) return;
+    setMessages([
+      {
+        id: 'welcome-cleared',
+        role: 'assistant',
+        content: `**Conversation Cleared**\n\nHow may I assist your agricultural operations today?`,
+        sources: [],
+        retrieved_chunks: [],
+        abstained: false,
+      }
+    ]);
   };
 
   const handleSend = async (e) => {
@@ -167,7 +224,6 @@ export const ChatPage = () => {
     setLoading(true);
     setLoadingStage('Hybrid dense vector (multilingual-e5) + BM25 keyword search...');
 
-    // Progress updates for UX
     const stageTimer1 = setTimeout(() => {
       setLoadingStage('Reranking top candidates with Cross-Encoder (ms-marco-MiniLM)...');
     }, 1800);
@@ -180,7 +236,7 @@ export const ChatPage = () => {
       const filters = {};
       if (selectedCrop) filters.crop = selectedCrop;
 
-      const res = await apiService.askChat({
+      const res = await chatApi.ask({
         session_id: sessionId,
         question: query,
         filters: Object.keys(filters).length > 0 ? filters : undefined,
@@ -214,9 +270,13 @@ export const ChatPage = () => {
     }
   };
 
-  const handleSelectSuggested = (item) => {
-    setInputQuery(item.query);
-    if (item.crop) setSelectedCrop(item.crop);
+  const handleFeedback = async (messageId, rating) => {
+    setFeedbackState((prev) => ({ ...prev, [messageId]: rating }));
+    try {
+      await feedbackApi.submit(messageId, rating);
+    } catch (err) {
+      console.warn('Feedback failed to persist:', err);
+    }
   };
 
   const openSidecarForMessage = (msg, citationIdx = 0) => {
@@ -229,7 +289,7 @@ export const ChatPage = () => {
     <div className="h-[calc(100vh-7.5rem)] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
       {/* Top Advisory Control Bar */}
       <div className="px-6 py-3 border-b border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
-        {/* Left: Active session & mode */}
+        {/* Left: Active session info */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -243,10 +303,10 @@ export const ChatPage = () => {
           </div>
         </div>
 
-        {/* Right: Filter & New Session Button */}
-        <div className="flex items-center gap-2.5">
+        {/* Right: Actions & Filter */}
+        <div className="flex items-center gap-2">
           {/* Crop Filter Selector */}
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-xs">
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-xs shadow-2xs">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-500 font-medium">Crop:</span>
             <select
@@ -262,14 +322,33 @@ export const ChatPage = () => {
             </select>
           </div>
 
+          {/* Previous Sessions Drawer Button */}
+          <button
+            onClick={handleOpenHistoryDrawer}
+            title="Browse previous conversation history"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer"
+          >
+            <History className="w-3.5 h-3.5 text-emerald-600" />
+            <span>History</span>
+          </button>
+
           {/* New Session Button */}
           <button
             onClick={startNewSession}
             title="Start fresh conversation session"
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors shadow-2xs"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer"
           >
             <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
             <span>New Chat</span>
+          </button>
+
+          {/* Clear Current Chat Button */}
+          <button
+            onClick={handleClearCurrentChat}
+            title="Clear message display"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -324,14 +403,14 @@ export const ChatPage = () => {
                 />
               )}
 
-              {/* Verified Sources & Timing Footnote for Assistant */}
+              {/* Footnote: Sources, Timings, and Feedback for Assistant */}
               {msg.role === 'assistant' && (
-                <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  {/* Sources pill button */}
+                <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  {/* Left: Sources inspection pill */}
                   {msg.sources && msg.sources.length > 0 ? (
                     <button
                       onClick={() => openSidecarForMessage(msg, 0)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-800 font-semibold transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-800 font-semibold transition-colors shadow-2xs cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{msg.sources.length} Verified Sources</span>
@@ -343,19 +422,43 @@ export const ChatPage = () => {
                     </span>
                   )}
 
-                  {/* Latency Metrics */}
-                  {(msg.retrieval_time_ms > 0 || msg.generation_time_ms > 0) && (
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
-                      <Clock className="w-3 h-3" />
-                      <span>
-                        Retrieval: {(msg.retrieval_time_ms / 1000).toFixed(2)}s
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Gen: {(msg.generation_time_ms / 1000).toFixed(1)}s
-                      </span>
+                  {/* Right: Latency & Helpful/Unhelpful Feedback */}
+                  <div className="flex items-center gap-4">
+                    {(msg.retrieval_time_ms > 0 || msg.generation_time_ms > 0) && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono hidden sm:flex">
+                        <Clock className="w-3 h-3" />
+                        <span>
+                          Retr: {(msg.retrieval_time_ms / 1000).toFixed(2)}s
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Gen: {(msg.generation_time_ms / 1000).toFixed(1)}s
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Feedback Thumbs */}
+                    <div className="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                      <button
+                        onClick={() => handleFeedback(msg.id, 1)}
+                        className={`p-1 rounded hover:bg-emerald-50 transition-colors ${
+                          feedbackState[msg.id] === 1 ? 'text-emerald-600' : 'text-slate-400'
+                        }`}
+                        title="Helpful recommendation"
+                      >
+                        <ThumbsUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleFeedback(msg.id, -1)}
+                        className={`p-1 rounded hover:bg-rose-50 transition-colors ${
+                          feedbackState[msg.id] === -1 ? 'text-rose-600' : 'text-slate-400'
+                        }`}
+                        title="Not helpful"
+                      >
+                        <ThumbsDown className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
@@ -368,7 +471,7 @@ export const ChatPage = () => {
           </div>
         ))}
 
-        {/* Loading Pulse State */}
+        {/* Loading Progress State */}
         {loading && (
           <div className="flex gap-3.5 justify-start">
             <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 animate-pulse">
@@ -398,7 +501,7 @@ export const ChatPage = () => {
             </div>
             <button
               onClick={() => setErrorMessage(null)}
-              className="text-xs font-semibold text-rose-700 underline hover:text-rose-900"
+              className="text-xs font-semibold text-rose-700 underline hover:text-rose-900 cursor-pointer"
             >
               Dismiss
             </button>
@@ -408,24 +511,21 @@ export const ChatPage = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Prompts Banner (visible if conversation is short) */}
+      {/* Suggested Questions Bar */}
       {messages.length <= 2 && (
         <div className="px-6 py-2.5 bg-slate-50/80 border-t border-slate-200/80">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 font-medium">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Sample Verified ICAR Questions:</span>
+            <span>Suggested ICAR Practice Queries:</span>
           </div>
           <div className="flex flex-wrap gap-2">
-            {SUGGESTED_QUERIES.map((item, idx) => (
+            {SPECIFIED_SUGGESTED_QUESTIONS.map((questionText, idx) => (
               <button
                 key={idx}
-                onClick={() => handleSelectSuggested(item)}
-                className="text-xs bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors text-left flex items-center gap-1.5 shadow-2xs"
+                onClick={() => setInputQuery(questionText)}
+                className="text-xs bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors text-left flex items-center gap-1.5 shadow-2xs cursor-pointer"
               >
-                <span>{item.query}</span>
-                <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                  {item.category}
-                </span>
+                <span>{questionText}</span>
               </button>
             ))}
           </div>
@@ -452,7 +552,7 @@ export const ChatPage = () => {
           ) : (
             <Send className="w-4 h-4" />
           )}
-          <span>{loading ? 'Reasoning...' : 'Ask Advisory'}</span>
+          <span>{loading ? 'Reasoning...' : 'Send'}</span>
         </button>
       </form>
 
@@ -463,6 +563,91 @@ export const ChatPage = () => {
         activeMessage={sidecarMessage}
         selectedCitationIndex={sidecarCitationIdx}
       />
+
+      {/* Previous Sessions History Slide-over Drawer */}
+      {historyDrawerOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          <div 
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+            onClick={() => setHistoryDrawerOpen(false)}
+          />
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col border-l border-slate-200">
+              <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Previous Advisory Conversations
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setHistoryDrawerOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {loadingSessions ? (
+                  <div className="p-8 text-center text-xs text-slate-500">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto text-emerald-600 mb-2" />
+                    Loading conversation sessions from SQLite...
+                  </div>
+                ) : sessionsList.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-500">
+                    No previous conversations found.
+                  </div>
+                ) : (
+                  sessionsList.map((s) => (
+                    <div
+                      key={s.session_id}
+                      onClick={() => handleSelectSession(s.session_id)}
+                      className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                        s.session_id === sessionId
+                          ? 'bg-emerald-50 border-emerald-300 shadow-xs'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="space-y-1 max-w-[280px]">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {s.preview}
+                        </div>
+                        <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                          <span>{s.message_count} messages</span>
+                          <span>•</span>
+                          <span>{new Date(s.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={(e) => handleDeleteSession(e, s.session_id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Delete session"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t border-slate-200">
+                <button
+                  onClick={() => {
+                    startNewSession();
+                    setHistoryDrawerOpen(false);
+                  }}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Start New Conversation</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -14,21 +14,27 @@ import {
   Tag,
   Search,
   Database,
+  Trash2,
+  Filter,
   ExternalLink,
   Cpu
 } from 'lucide-react';
-import { apiService } from '../services/api';
+import { documentApi, retrievalApi } from '../services/api';
 
 export const DocumentsPage = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterInstitution, setFilterInstitution] = useState('');
   
   // Upload State
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Deletion State
+  const [deletingId, setDeletingId] = useState(null);
 
   // Indexing Status State
   const [indexStatus, setIndexStatus] = useState(null);
@@ -45,7 +51,7 @@ export const DocumentsPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiService.getDocuments();
+      const data = await documentApi.getAll();
       setDocuments(data);
     } catch (err) {
       setError(err.message || 'Failed to load documents list');
@@ -57,7 +63,7 @@ export const DocumentsPage = () => {
   const fetchIndexStatus = async () => {
     setLoadingIndexStatus(true);
     try {
-      const data = await apiService.getIndexingStatus();
+      const data = await retrievalApi.getIndexStatus();
       setIndexStatus(data);
     } catch (err) {
       console.warn('Could not fetch indexing status:', err);
@@ -84,7 +90,7 @@ export const DocumentsPage = () => {
     formData.append('source_institution', 'ICAR');
 
     try {
-      const res = await apiService.uploadDocument(formData);
+      const res = await documentApi.upload(formData);
       setUploadResult({
         success: true,
         message: res.is_duplicate 
@@ -105,11 +111,34 @@ export const DocumentsPage = () => {
     }
   };
 
+  const handleDeleteDocument = async (docId, docTitle) => {
+    if (!window.confirm(`Are you sure you want to delete "${docTitle}"? This will remove its chunks and database record.`)) {
+      return;
+    }
+    setDeletingId(docId);
+    try {
+      await documentApi.delete(docId);
+      setUploadResult({
+        success: true,
+        message: `Document "${docTitle}" was removed successfully.`,
+      });
+      fetchDocuments();
+      fetchIndexStatus();
+    } catch (err) {
+      setUploadResult({
+        success: false,
+        message: err.message || 'Failed to delete document',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleTriggerReindex = async () => {
     setReindexing(true);
     setReindexResult(null);
     try {
-      const res = await apiService.triggerIndexing({ force_rebuild: false });
+      const res = await retrievalApi.triggerIndex({ force_rebuild: false });
       setReindexResult({
         success: true,
         message: `Indexed ${res.indexed_chunks_count} chunks across ${res.documents_processed} documents in ${res.duration_seconds}s.`,
@@ -129,7 +158,7 @@ export const DocumentsPage = () => {
     setInspectDocId(docId);
     setLoadingInspect(true);
     try {
-      const data = await apiService.getDocumentChunks(docId);
+      const data = await documentApi.getChunks(docId);
       setInspectData(data);
     } catch (err) {
       setInspectData({ error: err.message || 'Failed to load chunks' });
@@ -143,13 +172,23 @@ export const DocumentsPage = () => {
     setInspectData(null);
   };
 
+  // Distinct institutions for filter
+  const institutions = Array.from(
+    new Set(documents.map((d) => d.source_institution || 'ICAR'))
+  ).filter(Boolean);
+
   const filteredDocs = documents.filter((doc) => {
     const q = searchQuery.toLowerCase();
-    return (
+    const matchesSearch = 
       doc.title?.toLowerCase().includes(q) ||
       doc.filename?.toLowerCase().includes(q) ||
-      doc.source_institution?.toLowerCase().includes(q)
-    );
+      doc.source_institution?.toLowerCase().includes(q);
+    
+    const matchesInst = filterInstitution 
+      ? (doc.source_institution || '').toLowerCase() === filterInstitution.toLowerCase()
+      : true;
+
+    return matchesSearch && matchesInst;
   });
 
   return (
@@ -157,11 +196,12 @@ export const DocumentsPage = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-xl lg:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <FileText className="w-6 h-6 text-emerald-600" />
             ICAR Agricultural Publications & Manuals
           </h1>
           <p className="text-xs lg:text-sm text-slate-500">
-            Source repository serving as the deterministic knowledge base for hybrid RAG retrieval.
+            Source repository of official packages of practices serving as the grounded knowledge base.
           </p>
         </div>
 
@@ -169,10 +209,10 @@ export const DocumentsPage = () => {
           <button
             onClick={() => { fetchDocuments(); fetchIndexStatus(); }}
             disabled={loading || loadingIndexStatus}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${(loading || loadingIndexStatus) ? 'animate-spin text-emerald-600' : ''}`} />
-            Refresh
+            <span>Refresh Registry</span>
           </button>
         </div>
       </div>
@@ -192,7 +232,7 @@ export const DocumentsPage = () => {
           </h3>
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 pt-1">
             <span>
-              Vectors: <strong className="text-white font-mono">{indexStatus?.qdrant?.vectors_count || '1,654'}</strong> points
+              Vectors: <strong className="text-white font-mono">{indexStatus?.qdrant?.points_count || '1,654'}</strong> points
             </span>
             <span>•</span>
             <span>
@@ -200,7 +240,7 @@ export const DocumentsPage = () => {
             </span>
             <span>•</span>
             <span>
-              Docs: <strong className="text-white font-mono">{documents.length}</strong> ICAR guides
+              Registered Corpus: <strong className="text-white font-mono">{documents.length}</strong> ICAR guides
             </span>
           </div>
         </div>
@@ -286,28 +326,47 @@ export const DocumentsPage = () => {
         </div>
       )}
 
-      {/* Documents Table */}
+      {/* Documents Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        {/* Table Top Controls */}
-        <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Table Filter Bar */}
+        <div className="px-6 py-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-emerald-600" />
             <h2 className="text-sm font-bold text-slate-900">
-              Registered Documents ({documents.length})
+              Registered Publications ({filteredDocs.length} of {documents.length})
             </h2>
             <span className="text-xs text-slate-400 font-medium hidden sm:inline">• SQLite Persisted</span>
           </div>
 
-          {/* Search Box */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter publications..."
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-            />
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Institution Filter */}
+            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={filterInstitution}
+                onChange={(e) => setFilterInstitution(e.target.value)}
+                className="bg-transparent font-medium text-slate-700 focus:outline-none cursor-pointer"
+              >
+                <option value="">All Institutions</option>
+                {institutions.map((inst) => (
+                  <option key={inst} value={inst}>
+                    {inst}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Search Box */}
+            <div className="relative w-full sm:w-60">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by title or file..."
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+              />
+            </div>
           </div>
         </div>
 
@@ -328,7 +387,9 @@ export const DocumentsPage = () => {
             </div>
             <p className="text-sm font-semibold text-slate-700">No Documents Found</p>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {searchQuery ? `No documents match "${searchQuery}".` : 'Upload an official ICAR PDF publication using the dropzone above to begin.'}
+              {searchQuery || filterInstitution
+                ? 'No documents match your active filter criteria.'
+                : 'Upload an official ICAR publication using the dropzone above to begin.'}
             </p>
           </div>
         ) : (
@@ -338,9 +399,10 @@ export const DocumentsPage = () => {
                 <tr>
                   <th className="px-6 py-3.5">Document Title</th>
                   <th className="px-4 py-3.5">Institution</th>
-                  <th className="px-4 py-3.5 text-center">Pages</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5">Registered</th>
+                  <th className="px-3 py-3.5 text-center">Pages</th>
+                  <th className="px-3 py-3.5 text-center">Chunks</th>
+                  <th className="px-3 py-3.5">Status</th>
+                  <th className="px-4 py-3.5">Uploaded</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -366,11 +428,14 @@ export const DocumentsPage = () => {
                         {doc.source_institution || 'ICAR'}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-center font-mono font-medium text-slate-800">
+                    <td className="px-3 py-3.5 text-center font-mono font-medium text-slate-800">
                       {doc.page_count}
                     </td>
-                    <td className="px-4 py-3.5">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <td className="px-3 py-3.5 text-center font-mono font-medium text-emerald-700">
+                      {doc.chunk_count || '—'}
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                         <FileCheck2 className="w-3 h-3" />
                         {doc.status}
                       </span>
@@ -379,13 +444,24 @@ export const DocumentsPage = () => {
                       {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-6 py-3.5 text-right">
-                      <button
-                        onClick={() => handleOpenInspector(doc.id)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold transition-colors shadow-2xs cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Inspect Chunks</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenInspector(doc.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold transition-colors shadow-2xs cursor-pointer text-[11px]"
+                          title="Inspect Chunks and Token Breakdown"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Chunks</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                          disabled={deletingId === doc.id}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Delete Document"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

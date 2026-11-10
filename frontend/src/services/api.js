@@ -11,7 +11,7 @@ apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
     const errorPayload = {
-      message: error.response?.data?.error?.message || error.message || 'An unexpected error occurred',
+      message: error.response?.data?.detail || error.response?.data?.error?.message || error.message || 'An unexpected error occurred',
       code: error.response?.data?.error?.code || 'NETWORK_ERROR',
       status: error.response?.status,
     };
@@ -19,60 +19,121 @@ apiClient.interceptors.response.use(
   }
 );
 
-export const apiService = {
-  getHealth: async () => {
-    return apiClient.get('/health');
+// 1. Chat API Service
+export const chatApi = {
+  ask: async (data) => {
+    return apiClient.post('/chat', data, {
+      timeout: 240000, // 4 minutes for local CPU Ollama inference
+    });
   },
 
-  getDocuments: async () => {
+  getHistory: async (sessionId) => {
+    return apiClient.get(`/chat/history/${sessionId}`);
+  },
+
+  getSessions: async () => {
+    return apiClient.get('/chat/sessions');
+  },
+
+  deleteSession: async (sessionId) => {
+    return apiClient.delete(`/chat/sessions/${sessionId}`);
+  },
+
+  getStatus: async () => {
+    return apiClient.get('/chat/status');
+  },
+};
+
+// 2. Feedback API Service
+export const feedbackApi = {
+  submit: async (messageId, rating, comment = null) => {
+    return apiClient.post('/chat/feedback', {
+      message_id: messageId,
+      rating,
+      comment,
+    });
+  },
+};
+
+// 3. Document API Service
+export const documentApi = {
+  getAll: async () => {
     return apiClient.get('/documents');
   },
 
-  getDocument: async (documentId) => {
+  getById: async (documentId) => {
     return apiClient.get(`/documents/${documentId}`);
   },
 
-  getDocumentChunks: async (documentId, params = {}) => {
+  getChunks: async (documentId, params = {}) => {
     return apiClient.get(`/documents/${documentId}/chunks`, { params });
   },
 
-  uploadDocument: async (formData) => {
+  upload: async (formData) => {
     return apiClient.post('/documents/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: 120000,
+      timeout: 180000,
     });
   },
 
-  searchRetrieval: async (data) => {
+  delete: async (documentId) => {
+    return apiClient.delete(`/documents/${documentId}`);
+  },
+};
+
+// 4. Admin API Service
+export const adminApi = {
+  getStats: async () => {
+    return apiClient.get('/admin/stats');
+  },
+};
+
+// 5. Evaluation API Service
+export const evaluationApi = {
+  getMetrics: async () => {
+    return apiClient.get('/evaluation/metrics');
+  },
+};
+
+// 6. Retrieval & Indexing API Service
+export const retrievalApi = {
+  search: async (data) => {
     return apiClient.post('/retrieval/search', data);
   },
 
-  getIndexingStatus: async () => {
+  getIndexStatus: async () => {
     return apiClient.get('/retrieval/index/status');
   },
 
-  triggerIndexing: async (params = {}) => {
+  triggerIndex: async (params = {}) => {
     return apiClient.post('/retrieval/index', null, { 
       params,
-      timeout: 600000, // 10 minutes for full reindexing
+      timeout: 600000, 
     });
   },
+};
 
-  askChat: async (data) => {
-    return apiClient.post('/chat', data, {
-      timeout: 240000, // 4 minutes to allow local CPU LLM inference
-    });
-  },
-
-  getChatHistory: async (sessionId) => {
-    return apiClient.get(`/chat/history/${sessionId}`);
-  },
-
-  getLLMStatus: async () => {
-    return apiClient.get('/chat/status');
-  },
+// Legacy unified export for backward compatibility
+export const apiService = {
+  getHealth: async () => apiClient.get('/health'),
+  getDocuments: documentApi.getAll,
+  getDocument: documentApi.getById,
+  getDocumentChunks: documentApi.getChunks,
+  uploadDocument: documentApi.upload,
+  deleteDocument: documentApi.delete,
+  searchRetrieval: retrievalApi.search,
+  getIndexingStatus: retrievalApi.getIndexStatus,
+  triggerIndexing: retrievalApi.triggerIndex,
+  askChat: chatApi.ask,
+  getChatHistory: chatApi.getHistory,
+  getChatSessions: chatApi.getSessions,
+  deleteChatSession: chatApi.deleteSession,
+  getLLMStatus: chatApi.getStatus,
+  submitFeedback: feedbackApi.submit,
+  getAdminStats: adminApi.getStats,
+  getEvaluationMetrics: evaluationApi.getMetrics,
 };
 
 export default apiClient;
