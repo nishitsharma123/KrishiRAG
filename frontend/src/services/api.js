@@ -55,6 +55,18 @@ export const apiService = {
   triggerIndexing: async (params = {}) => {
     return apiClient.post('/retrieval/index', null, { params });
   },
+
+  askChat: async (data) => {
+    return apiClient.post('/chat', data);
+  },
+
+  getChatHistory: async (sessionId) => {
+    return apiClient.get(`/chat/history/${sessionId}`);
+  },
+
+  getLLMStatus: async () => {
+    return apiClient.get('/chat/status');
+  },
 };
 
 export default apiClient;

@@ -8,6 +8,8 @@ from backend.app.services.vector_store import vector_store, VectorStore
 from backend.app.services.bm25_service import bm25_service, BM25Service
 from backend.app.services.retrieval_service import retrieve_context, reranker_service, RetrievedChunk
 from backend.app.services.indexing_pipeline import IndexingPipeline
+from backend.app.services.llm_service import llm_service, LLMService
+from backend.app.services.rag_service import rag_service, RAGService
 
 __all__ = [
     "DocumentExtractor",
@@ -26,4 +28,8 @@ __all__ = [
     "reranker_service",
     "RetrievedChunk",
     "IndexingPipeline",
+    "llm_service",
+    "LLMService",
+    "rag_service",
+    "RAGService",
 ]
