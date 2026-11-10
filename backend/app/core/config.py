@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     PROCESSED_DATA_PATH: str = "./data/processed"
     STORAGE_PATH: str = "./storage"
 
+    # Ingestion & Chunking
+    MAX_UPLOAD_SIZE_MB: int = 50
+    ALLOWED_EXTENSIONS: List[str] = [".pdf", ".txt", ".docx"]
+    SCAN_TEXT_THRESHOLD: int = 50
+    CHUNK_MIN_TOKENS: int = 500
+    CHUNK_MAX_TOKENS: int = 700
+    CHUNK_OVERLAP_TOKENS: int = 80
+
     # Embedding & Retrieval
     EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-small"
     RERANKER_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"

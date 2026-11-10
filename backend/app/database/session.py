@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
@@ -38,4 +38,28 @@ def init_db():
     from backend.app.models import document, conversation, message, feedback # noqa
     logger.info("Initializing database tables...")
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight migration for SQLite: Ensure new columns exist on existing tables
+    if settings.DATABASE_URL.startswith("sqlite"):
+        with engine.connect() as conn:
+            try:
+                table_info = conn.execute(text("PRAGMA table_info(documents)")).fetchall()
+                existing_cols = {row[1] for row in table_info}
+
+                col_defs = [
+                    ("file_hash", "VARCHAR(64)"),
+                    ("file_size", "INTEGER DEFAULT 0"),
+                    ("mime_type", "VARCHAR(64)"),
+                    ("chunk_count", "INTEGER DEFAULT 0"),
+                    ("error_message", "TEXT")
+                ]
+
+                for col_name, col_type in col_defs:
+                    if col_name not in existing_cols:
+                        logger.info(f"Applying schema migration: ALTER TABLE documents ADD COLUMN {col_name} {col_type}")
+                        conn.execute(text(f"ALTER TABLE documents ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Schema check error: {e}")
+
     logger.info("Database tables initialized successfully.")

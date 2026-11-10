@@ -1,18 +1,12 @@
 import axios from 'axios';
 
-// Vite proxy forwards /api to backend http://127.0.0.1:8000/api
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  },
+  timeout: 30000,
 });
 
-// Response interceptor for consistent error handling
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
@@ -26,18 +20,28 @@ apiClient.interceptors.response.use(
 );
 
 export const apiService = {
-  /**
-   * Health diagnostic check
-   */
   getHealth: async () => {
     return apiClient.get('/health');
   },
 
-  /**
-   * Fetch all registered documents
-   */
   getDocuments: async () => {
     return apiClient.get('/documents');
+  },
+
+  getDocument: async (documentId) => {
+    return apiClient.get(`/documents/${documentId}`);
+  },
+
+  getDocumentChunks: async (documentId, params = {}) => {
+    return apiClient.get(`/documents/${documentId}/chunks`, { params });
+  },
+
+  uploadDocument: async (formData) => {
+    return apiClient.post('/documents/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
   },
 };
 
