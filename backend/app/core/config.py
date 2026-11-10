@@ -56,15 +56,15 @@ class Settings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = 8
     TOP_K_DENSE: int = 10
     TOP_K_SPARSE: int = 10
-    FINAL_CONTEXT_CHUNKS: int = 5
+    FINAL_CONTEXT_CHUNKS: int = 3
 
     # LLM Settings
     LLM_PROVIDER: str = "ollama"
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "qwen3:4b"
-    OLLAMA_CONTEXT_WINDOW: int = 4096
-    OLLAMA_NUM_THREADS: int = 4
-    LLM_TIMEOUT_SECONDS: int = 180
+    OLLAMA_CONTEXT_WINDOW: int = 2048
+    OLLAMA_NUM_THREADS: int = 6
+    LLM_TIMEOUT_SECONDS: int = 300
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),

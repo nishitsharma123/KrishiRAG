@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import threading
 from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
@@ -106,25 +107,46 @@ class LLMService:
                 "models": [],
             }
 
+    def _format_raw_prompt(self, messages: List[Dict[str, str]], assistant_prefix: str = "Namaste Kisan Bhai!\n\n") -> str:
+        """
+        Construct a raw ChatML prompt that closes the <think> tag immediately.
+        This completely bypasses Qwen3's thinking mode and forces direct generation
+        starting with a warm, conversational greeting.
+        """
+        prompt_parts = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>\n")
+
+        # Force assistant to close think mode immediately and begin warm response
+        prompt_parts.append(f"<|im_start|>assistant\n<think>\nReady.\n</think>\n{assistant_prefix}")
+        return "".join(prompt_parts)
+
     def generate_chat_sync(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.2,
-        max_tokens: int = 1024,
+        max_tokens: int = 512,
     ) -> str:
         """
         Synchronous generation with single-concurrency lock.
+        Uses /api/generate with raw=True to close thinking tags and force direct conversational output.
         """
         with self._lock:
-            url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+            url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+            raw_prompt = self._format_raw_prompt(messages)
+
             payload = {
                 "model": settings.OLLAMA_MODEL,
-                "messages": messages,
+                "prompt": raw_prompt,
+                "raw": True,
                 "stream": False,
                 "options": {
                     "temperature": temperature,
                     "num_ctx": settings.OLLAMA_CONTEXT_WINDOW,
                     "num_predict": max_tokens,
+                    "num_thread": settings.OLLAMA_NUM_THREADS,
                 },
             }
 
@@ -139,7 +161,9 @@ class LLMService:
                         raise LLMServiceError(f"Ollama returned HTTP {resp.status_code}: {resp.text}")
 
                     data = resp.json()
-                    content = data.get("message", {}).get("content", "")
+                    content = data.get("response", "")
+                    content = "Namaste Kisan Bhai!\n\n" + content.strip()
+                    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
                     return content
             except httpx.ConnectError as e:
                 raise LLMConnectionError(
@@ -154,21 +178,26 @@ class LLMService:
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.2,
-        max_tokens: int = 1024,
+        max_tokens: int = 512,
     ) -> str:
         """
         Asynchronous generation bounded by asyncio.Semaphore(1).
+        Uses /api/generate with raw=True to close thinking tags and force direct conversational output.
         """
         async with self.async_semaphore:
-            url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+            url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+            raw_prompt = self._format_raw_prompt(messages)
+
             payload = {
                 "model": settings.OLLAMA_MODEL,
-                "messages": messages,
+                "prompt": raw_prompt,
+                "raw": True,
                 "stream": False,
                 "options": {
                     "temperature": temperature,
                     "num_ctx": settings.OLLAMA_CONTEXT_WINDOW,
                     "num_predict": max_tokens,
+                    "num_thread": settings.OLLAMA_NUM_THREADS,
                 },
             }
 
@@ -183,7 +212,9 @@ class LLMService:
                         raise LLMServiceError(f"Ollama returned HTTP {resp.status_code}: {resp.text}")
 
                     data = resp.json()
-                    content = data.get("message", {}).get("content", "")
+                    content = data.get("response", "")
+                    content = "Namaste Kisan Bhai!\n\n" + content.strip()
+                    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
                     return content
             except httpx.ConnectError as e:
                 raise LLMConnectionError(
@@ -198,23 +229,29 @@ class LLMService:
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.2,
-        max_tokens: int = 1024,
+        max_tokens: int = 512,
     ) -> AsyncGenerator[str, None]:
         """
         Streaming token generator yielding partial text chunks in real-time.
         """
         async with self.async_semaphore:
-            url = f"{settings.OLLAMA_BASE_URL}/api/chat"
+            url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+            raw_prompt = self._format_raw_prompt(messages)
+
             payload = {
                 "model": settings.OLLAMA_MODEL,
-                "messages": messages,
+                "prompt": raw_prompt,
+                "raw": True,
                 "stream": True,
                 "options": {
                     "temperature": temperature,
                     "num_ctx": settings.OLLAMA_CONTEXT_WINDOW,
                     "num_predict": max_tokens,
+                    "num_thread": settings.OLLAMA_NUM_THREADS,
                 },
             }
+
+            yield "Namaste Kisan Bhai!\n\n"
 
             try:
                 async with httpx.AsyncClient(timeout=float(settings.LLM_TIMEOUT_SECONDS)) as client:
@@ -225,9 +262,12 @@ class LLMService:
                             if line.strip():
                                 try:
                                     chunk = json.loads(line)
-                                    token = chunk.get("message", {}).get("content", "")
+                                    token = chunk.get("response", "")
                                     if token:
-                                        yield token
+                                        # Filter out any leftover stop tags
+                                        token = token.replace("<|im_end|>", "")
+                                        if token:
+                                            yield token
                                 except json.JSONDecodeError:
                                     continue
             except httpx.ConnectError as e:

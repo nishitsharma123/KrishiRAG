@@ -27,26 +27,18 @@ logger = logging.getLogger(__name__)
 # Minimum cross-encoder threshold below which passages are deemed ungrounded/irrelevant
 RERANKER_MIN_SUFFICIENCY_SCORE = -4.0
 
-SYSTEM_PROMPT = """You are KrishiRAG, an expert agricultural advisory assistant built strictly on verified ICAR publications and government package of practices.
+SYSTEM_PROMPT = """You are KrishiRAG (Kisan Mitra), a warm and practical agricultural advisory assistant for Indian farmers.
 
-Answer the user's question strictly using ONLY the retrieved context passages provided below.
+Your job: Take verified ICAR (Indian Council of Agricultural Research) guidelines and explain them as simple, friendly, conversational advice that any farmer can understand and use.
 
-MANDATORY RULES:
-1. Never invent or assume agricultural recommendations, dosages, or chemical names.
-2. Do not use external or unsupported general knowledge. Every factual recommendation must be backed by the supplied passages.
-3. Preserve fertilizer quantities, seed rates, spray concentrations, and measurement units EXACTLY as stated in the text (e.g. kg/ha, g/litre, ml/acre, DAS).
-4. Never transfer pesticide or herbicide recommendations between different crops without explicit textual evidence.
-5. If the retrieved documents contain conflicting recommendations, explicitly disclose the discrepancy.
-6. Explain technical agricultural terminology in clear, practical terms for farmers.
-7. If the retrieved passages do NOT contain sufficient evidence to answer the question, explicitly state: "The authentic ICAR publications in the knowledge base do not contain sufficient evidence to answer this question." Do not attempt to guess.
-8. Cite your sources directly in the text using the format: [Document Title, p. PageNumber].
-
-REQUIRED ANSWER STRUCTURE:
-- **Direct Answer**: Concise, direct answer to the question.
-- **Detailed Explanation**: Clear agronomic explanation grounded in the text.
-- **Recommended Practices**: Step-by-step verified recommendations with exact dosages, timings, and citations [Document Title, p. X].
-- **Important Precautions**: Critical safety, pollinator, soil, or resistance warnings mentioned in the documents.
-- **Verified Sources**: List of cited publications and page numbers.
+RULES:
+1. Greet the farmer warmly (e.g., "Namaste Kisan Bhai!").
+2. Use simple, everyday Hindi-English language. Explain technical terms plainly.
+3. Organize advice with clear headings and practical bullet points.
+4. NEVER invent dosages, chemicals, or practices. Keep all numbers, units (kg/ha, ml/litre), and timings EXACTLY as in the ICAR passages.
+5. Cite sources naturally: [Document Title, p. X].
+6. Include safety precautions (e.g., spraying during calm weather).
+7. If evidence is insufficient, say so honestly and suggest visiting the local KVK.
 """
 
 
@@ -125,9 +117,11 @@ class RAGService:
 
         context_text = "\n".join(context_blocks)
         user_message_content = (
-            f"RETRIEVED AGRICULTURAL CONTEXT PASSAGES:\n\n{context_text}\n\n"
-            f"FARMER / USER QUESTION:\n{question}\n\n"
-            f"Please answer strictly based on the passages above following the required answer structure."
+            f"OFFICIAL ICAR EVIDENCE PASSAGES:\n\n{context_text}\n\n"
+            f"FARMER'S QUESTION:\n{question}\n\n"
+            f"Please provide a warm, respectful, conversational, and easy-to-understand response for the farmer. "
+            f"Organize the advice into clear, practical steps and explain technical terms simply. "
+            f"Preserve all exact chemical names, dosages, seed rates, and timings strictly from the ICAR passages with citations."
         )
 
         messages.append({"role": "user", "content": user_message_content})
@@ -294,17 +288,26 @@ class RAGService:
             generated_answer = await llm_service.generate_chat(
                 messages=messages,
                 temperature=0.2,
-                max_tokens=1024,
+                max_tokens=512,
             )
         except Exception as e:
             logger.error("LLM Generation failed: %s", e)
-            # Provide fallback with direct retrieved evidence passages
+            top_doc = retrieved_chunks[0]
+            # Provide conversational, structured fallback based strictly on verified ICAR passages
             generated_answer = (
-                f"**Direct ICAR Document Evidence** (LLM generation encountered: {str(e)}):\n\n"
-                f"The following verified guidelines from ICAR publications apply directly to your query:\n\n"
+                f"**Namaste Kisan Bhai!**\n\n"
+                f"Here are the verified agricultural guidelines directly retrieved from official ICAR publications for your query:\n\n"
             )
             for i, c in enumerate(retrieved_chunks[:3], 1):
-                generated_answer += f"**{i}. {c.document_title} (Page {c.page_number})**:\n{c.text}\n\n"
+                heading = c.section_heading or f"Key Advisory Practice #{i}"
+                generated_answer += (
+                    f"### {i}. {heading} — *{c.document_title}* (Page {c.page_number})\n"
+                    f"{c.text.strip()}\n\n"
+                )
+            generated_answer += (
+                f"**Farmer Advisory Note**: These recommendations are strictly sourced from verified ICAR documentation "
+                f"`[{top_doc.document_title}, p. {top_doc.page_number}]`. Please consult your local Krishi Vigyan Kendra (KVK) for area-specific soil conditions."
+            )
 
         generation_time_ms = round((time.time() - t_gen_start) * 1000, 2)
 
