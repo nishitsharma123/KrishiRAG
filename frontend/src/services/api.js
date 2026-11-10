@@ -43,6 +43,18 @@ export const apiService = {
       },
     });
   },
+
+  searchRetrieval: async (data) => {
+    return apiClient.post('/retrieval/search', data);
+  },
+
+  getIndexingStatus: async () => {
+    return apiClient.get('/retrieval/index/status');
+  },
+
+  triggerIndexing: async (params = {}) => {
+    return apiClient.post('/retrieval/index', null, { params });
+  },
 };
 
 export default apiClient;

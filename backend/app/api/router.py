@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, status, HTTPException
 from sqlalchemy.orm import Session
 from backend.app.api.health import router as health_router
+from backend.app.api.retrieval import router as retrieval_router
 from backend.app.database.session import get_db
 from backend.app.models.document import Document
 from backend.app.schemas.document import DocumentResponse, DocumentIngestionResult
@@ -68,3 +69,4 @@ def inspect_document_chunks(
     return inspection
 
 api_router.include_router(docs_router)
+api_router.include_router(retrieval_router)
