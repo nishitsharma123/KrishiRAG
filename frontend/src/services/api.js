@@ -23,7 +23,7 @@ apiClient.interceptors.response.use(
 export const chatApi = {
   ask: async (data) => {
     return apiClient.post('/chat', data, {
-      timeout: 120000, // 2 minutes max (backend timeout fallback returns in <75s)
+      timeout: 180000, // 3 minutes buffer (backend responds in ~50s)
     });
   },
 

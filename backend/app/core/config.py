@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen3:4b"
     OLLAMA_CONTEXT_WINDOW: int = 1536
     OLLAMA_NUM_THREADS: int = 6
-    LLM_TIMEOUT_SECONDS: int = 70
+    LLM_TIMEOUT_SECONDS: int = 45
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),

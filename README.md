@@ -40,25 +40,76 @@ KrishiRAG guarantees that **every agronomic response is directly traceable to ve
 - Node.js 18+ and npm
 - Ollama (installed locally)
 
-### 2. Backend Setup
+---
+
+### 2. Ollama Setup & Verification
+
+KrishiRAG utilizes local CPU inference via **Ollama** running the quantized `qwen3:4b` model.
+
+#### A. Installation
+- **Windows**: Download and run the installer from the official website: [ollama.com/download/windows](https://ollama.com/download/windows).
+- **macOS**: `brew install ollama` or download from [ollama.com/download/mac](https://ollama.com/download/mac).
+- **Linux**:
+  ```bash
+  curl -fsSL https://ollama.com/install.sh | sh
+  ```
+
+#### B. Pull the Required Model
+Make sure you have at least ~3.5 GB of free disk space before pulling the model:
+```bash
+ollama pull qwen3:4b
+```
+
+#### C. Start the Ollama Service
+On Windows, Ollama typically runs as a background tray icon. If it is not running, start it manually in a dedicated terminal:
+```powershell
+ollama serve
+```
+
+#### D. Verify if Ollama is Running
+Check whether the Ollama server is accessible and verify that `qwen3:4b` is installed:
+
+**Option 1: Using the Ollama CLI**
+```powershell
+# List installed models
+ollama list
+```
+You should see `qwen3:4b` in the output list.
+
+**Option 2: Using curl / PowerShell**
+```powershell
+# Check server status
+curl http://127.0.0.1:11434/api/tags
+```
+If running, this returns a JSON payload listing available models with HTTP status `200 OK`.
+
+---
+
+### 3. Backend Setup
 ```bash
 # Navigate to backend
 cd backend
 
 # Create and activate virtual environment
 python -m venv .venv
-# Windows:
+
+# Windows activation:
 .venv\Scripts\activate
+# Linux/macOS activation:
+# source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
+# Return to root directory
+cd ..
+
 # Start backend server
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 API Documentation will be available at: `http://localhost:8000/docs`
 
-### 3. Frontend Setup
+### 4. Frontend Setup
 ```bash
 # In a separate terminal, navigate to frontend
 cd frontend
